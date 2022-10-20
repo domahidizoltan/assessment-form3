@@ -2,6 +2,7 @@ package account
 
 import (
 	"encoding/json"
+	"form3interview/pkg/config"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -10,17 +11,26 @@ import (
 type (
 	accountClient struct {
 		client http.Client
+		config config.ClientConfig
 	}
 )
 
-func NewClient() (accountClient, error) {
+func NewClient(options ...config.Option) (accountClient, error) {
+	cfg := config.InitConfig()
+	for _, opt := range options {
+		opt(&cfg)
+	}
+
 	return accountClient{
-		client: *http.DefaultClient,
+		client: *&http.Client{
+			Timeout: *cfg.Timeout,
+		},
+		config: cfg,
 	}, nil
 }
 
 func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
-	resp, err := a.client.Get("http://localhost:8080/v1/organisation/accounts/" + accountID.String())
+	resp, err := a.get("/organisation/accounts/" + accountID.String())
 	if err != nil {
 		return nil, err
 	}
@@ -32,4 +42,8 @@ func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 	}
 	return &container.Data, nil
 
+}
+
+func (a accountClient) get(url string) (*http.Response, error) {
+	return a.client.Get(a.config.BaseUrl + url)
 }
