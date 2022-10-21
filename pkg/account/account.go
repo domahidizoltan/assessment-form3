@@ -23,10 +23,20 @@ func NewClient(options ...config.Option) (accountClient, error) {
 
 	return accountClient{
 		client: *&http.Client{
-			Timeout: *cfg.Timeout,
+			Timeout:   *cfg.Timeout,
+			Transport: createTransport(cfg),
 		},
 		config: cfg,
 	}, nil
+}
+
+func createTransport(cfg config.ClientConfig) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxConnsPerHost = cfg.MaxConns
+	transport.MaxIdleConnsPerHost = cfg.MaxConns
+	transport.MaxIdleConns = cfg.MaxConns
+	transport.IdleConnTimeout = *cfg.IdleConnTimeout
+	return transport
 }
 
 func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {

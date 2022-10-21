@@ -8,8 +8,10 @@ import (
 )
 
 type ClientConfig struct {
-	BaseUrl string         `env:"BASE_URL"`
-	Timeout *time.Duration `env:"TIMEOUT" envDefault:"5s"`
+	BaseUrl         string         `env:"BASE_URL"`
+	Timeout         *time.Duration `env:"TIMEOUT" envDefault:"5s"`
+	MaxConns        int            `env:"MAX_CONNS" envDefault:"100"`
+	IdleConnTimeout *time.Duration `env:"IDLE_CONN_TIMEOUT" envDefault:"90s"`
 }
 
 func InitConfig() ClientConfig {
@@ -33,5 +35,17 @@ func WithBaseUrl(baseUrl string) Option {
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *ClientConfig) {
 		c.Timeout = &timeout
+	}
+}
+
+func WithMaxConns(maxConn int) Option {
+	return func(c *ClientConfig) {
+		c.MaxConns = maxConn
+	}
+}
+
+func WithIdleConnTimeout(idleConnTimeout time.Duration) Option {
+	return func(c *ClientConfig) {
+		c.IdleConnTimeout = &idleConnTimeout
 	}
 }
