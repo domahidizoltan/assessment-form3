@@ -4,10 +4,12 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v6"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 type ClientConfig struct {
+	OrganisationID  uuid.UUID      `env:"ORGANISATION_ID"`
 	BaseUrl         string         `env:"BASE_URL"`
 	Timeout         *time.Duration `env:"TIMEOUT" envDefault:"5s"`
 	MaxConns        int            `env:"MAX_CONNS" envDefault:"100"`

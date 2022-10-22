@@ -1,6 +1,6 @@
 package account
 
-type responseContainer struct {
+type dataContainer struct {
 	Data AccountData `json:"data,omitempty"`
 }
 

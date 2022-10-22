@@ -1,11 +1,14 @@
 package account
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -15,7 +18,9 @@ import (
 )
 
 const (
-	accountsUrl = "/organisation/accounts/"
+	accountsUrl     = "/organisation/accounts"
+	jsonContentType = "application/json"
+	accountsType    = "accounts"
 )
 
 var (
@@ -24,11 +29,15 @@ var (
 	ErrInvalidAccountVersion    = errors.New("invalid account version")
 	ErrServerError              = errors.New("server error")
 	ErrUnexpectedServerResponse = errors.New("unexpected server response")
+	ErrInvalidRequest           = errors.New("invalid request")
+
+	generateUUID func() (uuid.UUID, error) = uuid.NewUUID
 )
 
 type (
 	httpClient interface {
 		Get(url string) (*http.Response, error)
+		Post(url, contentType string, body io.Reader) (*http.Response, error)
 		Do(req *http.Request) (*http.Response, error)
 	}
 	accountClient struct {
@@ -61,12 +70,59 @@ func createTransport(cfg conf.ClientConfig) *http.Transport {
 	return transport
 }
 
+func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error) {
+	newID, err := generateUUID()
+	if err != nil {
+		return nil, err
+	}
+
+	acc := AccountData{
+		ID:             newID.String(),
+		OrganisationID: a.config.OrganisationID.String(),
+		Type:           accountsType,
+		Attributes:     &attributes,
+	}
+
+	resp, err := a.post(acc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusBadRequest:
+		msg, err := getErrorResponse(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		log.Error().Msgf("%s: %s", ErrInvalidRequest, msg)
+		return nil, ErrInvalidRequest
+	case http.StatusInternalServerError:
+		msg, err := getErrorResponse(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		log.Error().Msgf("%s: %s", ErrServerError, msg)
+		return nil, ErrServerError
+	case http.StatusCreated:
+		log.Debug().Msgf("account %s created", acc.ID)
+		return bodyToAccountData(resp.Body)
+	}
+
+	body := make([]byte, resp.ContentLength)
+	if _, err := resp.Body.Read(body); err != nil {
+		return nil, err
+	}
+	log.Info().Msgf("%s: [%d] %s", ErrUnexpectedServerResponse, resp.StatusCode, body)
+	return nil, ErrUnexpectedServerResponse
+}
+
 func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 	if accountID == uuid.Nil {
 		return nil, ErrNilUuid
 	}
 
-	resp, err := a.get(accountsUrl + accountID.String())
+	resp, err := a.get(fmt.Sprintf("%s/%s", accountsUrl, accountID))
 	if err != nil {
 		return nil, err
 	}
@@ -83,11 +139,7 @@ func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 		log.Error().Msgf("%s: %s", ErrServerError, msg)
 		return nil, ErrServerError
 	case http.StatusOK:
-		var container responseContainer
-		if err := json.NewDecoder(resp.Body).Decode(&container); err != nil {
-			return nil, err
-		}
-		return &container.Data, nil
+		return bodyToAccountData(resp.Body)
 	}
 
 	body := make([]byte, resp.ContentLength)
@@ -147,10 +199,19 @@ func (a accountClient) get(url string) (*http.Response, error) {
 	return a.client.Get(a.config.BaseUrl + url)
 }
 
+func (a accountClient) post(account AccountData) (*http.Response, error) {
+	container := dataContainer{Data: account}
+	buf := new(bytes.Buffer)
+	if err := json.NewEncoder(buf).Encode(container); err != nil {
+		return &http.Response{Body: toResponseBody("")}, err
+	}
+	return a.client.Post(a.config.BaseUrl+accountsUrl, jsonContentType, buf)
+}
+
 func (a accountClient) delete(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodDelete, a.config.BaseUrl+url, nil)
 	if err != nil {
-		return nil, err
+		return &http.Response{Body: toResponseBody("")}, err
 	}
 	return a.client.Do(req)
 }
@@ -161,4 +222,16 @@ func getErrorResponse(body io.ReadCloser) (string, error) {
 		return "", err
 	}
 	return se.ErrorMessage, nil
+}
+
+func toResponseBody(body string) io.ReadCloser {
+	return ioutil.NopCloser(strings.NewReader(body))
+}
+
+func bodyToAccountData(body io.Reader) (*AccountData, error) {
+	var container dataContainer
+	if err := json.NewDecoder(body).Decode(&container); err != nil {
+		return nil, err
+	}
+	return &container.Data, nil
 }

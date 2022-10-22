@@ -4,6 +4,8 @@ import (
 	"time"
 
 	conf "form3interview/internal/config"
+
+	"github.com/google/uuid"
 )
 
 type Option = func(*conf.ClientConfig)
@@ -29,5 +31,11 @@ func WithMaxConns(maxConn int) Option {
 func WithIdleConnTimeout(idleConnTimeout time.Duration) Option {
 	return func(c *conf.ClientConfig) {
 		c.IdleConnTimeout = &idleConnTimeout
+	}
+}
+
+func WithOrganisationID(id uuid.UUID) Option {
+	return func(c *conf.ClientConfig) {
+		c.OrganisationID = id
 	}
 }
