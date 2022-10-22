@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -18,15 +19,16 @@ const (
 )
 
 var (
-	ErrNilUuid               = errors.New("accountID can't be nil UUID")
-	ErrAccountNotFound       = errors.New("account not found")
-	ErrInvalidAccountVersion = errors.New("invalid account version")
-	ErrServerError           = errors.New("server error")
+	ErrNilUuid                  = errors.New("accountID can't be nil UUID")
+	ErrAccountNotFound          = errors.New("account not found")
+	ErrInvalidAccountVersion    = errors.New("invalid account version")
+	ErrServerError              = errors.New("server error")
+	ErrUnexpectedServerResponse = errors.New("unexpected server response")
 )
 
 type (
 	httpClient interface {
-		Get(url string) (resp *http.Response, err error)
+		Get(url string) (*http.Response, error)
 		Do(req *http.Request) (*http.Response, error)
 	}
 	accountClient struct {
@@ -60,24 +62,53 @@ func createTransport(cfg conf.ClientConfig) *http.Transport {
 }
 
 func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
+	if accountID == uuid.Nil {
+		return nil, ErrNilUuid
+	}
+
 	resp, err := a.get(accountsUrl + accountID.String())
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var container responseContainer
-	if err := json.NewDecoder(resp.Body).Decode(&container); err != nil {
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return nil, ErrAccountNotFound
+	case http.StatusInternalServerError:
+		msg, err := getErrorResponse(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		log.Error().Msgf("%s: %s", ErrServerError, msg)
+		return nil, ErrServerError
+	case http.StatusOK:
+		var container responseContainer
+		if err := json.NewDecoder(resp.Body).Decode(&container); err != nil {
+			return nil, err
+		}
+		return &container.Data, nil
+	}
+
+	body := make([]byte, resp.ContentLength)
+	if _, err := resp.Body.Read(body); err != nil {
 		return nil, err
 	}
-	return &container.Data, nil
-
+	log.Info().Msgf("%s: [%d] %s", ErrUnexpectedServerResponse, resp.StatusCode, body)
+	return nil, ErrUnexpectedServerResponse
 }
 
 func (a accountClient) Delete(accountID uuid.UUID) error {
-	//fetch
-	//delete
-	return nil
+	acc, err := a.Fetch(accountID)
+	if err != nil {
+		return err
+	}
+
+	version := uint(0)
+	if acc.Version != nil {
+		version = uint(*acc.Version)
+	}
+	return a.DeleteVersion(accountID, version)
 }
 
 func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
@@ -98,11 +129,11 @@ func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 	case http.StatusConflict:
 		return ErrInvalidAccountVersion
 	case http.StatusInternalServerError:
-		var se serverError
-		if err := json.NewDecoder(resp.Body).Decode(&se); err != nil {
+		msg, err := getErrorResponse(resp.Body)
+		if err != nil {
 			return err
 		}
-		log.Error().Msgf("%s: %s", ErrServerError, se.ErrorMessage)
+		log.Error().Msgf("%s: %s", ErrServerError, msg)
 		return ErrServerError
 	case http.StatusNoContent:
 		log.Debug().Msgf("account %s deleted", accountID)
@@ -122,4 +153,12 @@ func (a accountClient) delete(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return a.client.Do(req)
+}
+
+func getErrorResponse(body io.ReadCloser) (string, error) {
+	var se serverError
+	if err := json.NewDecoder(body).Decode(&se); err != nil {
+		return "", err
+	}
+	return se.ErrorMessage, nil
 }
