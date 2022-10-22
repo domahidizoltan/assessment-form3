@@ -12,7 +12,7 @@ type Option = func(*conf.ClientConfig)
 
 func WithBaseUrl(baseUrl string) Option {
 	return func(c *conf.ClientConfig) {
-		c.BaseUrl = baseUrl
+		c.BaseUrl = &baseUrl
 	}
 }
 
@@ -36,6 +36,6 @@ func WithIdleConnTimeout(idleConnTimeout time.Duration) Option {
 
 func WithOrganisationID(id uuid.UUID) Option {
 	return func(c *conf.ClientConfig) {
-		c.OrganisationID = id
+		c.OrganisationID = &id
 	}
 }

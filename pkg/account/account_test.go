@@ -36,11 +36,13 @@ func TestAccountTestSuite(t *testing.T) {
 
 func (s *accountTestSuite) SetupTest() {
 	s.mockHttpClient = &mocks.HttpClientMock{}
+	orgID := uuid.MustParse(testOrganisationID)
+	baseUrl := testBaseUrl
 	s.accountClient = accountClient{
 		client: s.mockHttpClient,
 		config: config.ClientConfig{
-			BaseUrl:        testBaseUrl,
-			OrganisationID: uuid.MustParse(testOrganisationID),
+			BaseUrl:        &baseUrl,
+			OrganisationID: &orgID,
 		},
 	}
 }
@@ -96,7 +98,7 @@ func (s *accountTestSuite) TestCreateReturnsHttpClientError() {
 }
 
 func (s *accountTestSuite) TestCreateAccount() {
-	accountID := newUUID()
+	accountID := uuid.New()
 	originalGenerateUUID := generateUUID
 	generateUUID = func() (uuid.UUID, error) { return accountID, nil }
 	defer func() {
@@ -139,19 +141,19 @@ func (s *accountTestSuite) TestFetchReturnsError() {
 	}{
 		{
 			name:           "account not found",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			responseStatus: http.StatusNotFound,
 			expectedError:  ErrAccountNotFound,
 		}, {
 			name:           "server error",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			responseStatus: http.StatusInternalServerError,
 			responseBody:   "{\"error_message\": \"backend error\"}",
 			expectedError:  ErrServerError,
 		},
 		{
 			name:           "unexpected server response",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			responseStatus: http.StatusTeapot,
 			responseBody:   "oops",
 			expectedError:  ErrUnexpectedServerResponse,
@@ -179,13 +181,13 @@ func (s *accountTestSuite) TestFetchReturnsHttpClientError() {
 		Return(nil, expectedError).
 		Once()
 
-	_, actualError := s.accountClient.Fetch(newUUID())
+	_, actualError := s.accountClient.Fetch(uuid.New())
 
 	s.ErrorIs(expectedError, actualError)
 }
 
 func (s *accountTestSuite) TestFetchAccount() {
-	accountID := newUUID()
+	accountID := uuid.New()
 	expectedAccount := AccountData{
 		ID: accountID.String(),
 	}
@@ -220,18 +222,18 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError() {
 	}{
 		{
 			name:           "account not found",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			responseStatus: http.StatusNotFound,
 			expectedError:  ErrAccountNotFound,
 		}, {
 			name:           "invalid account version",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			version:        uint(999),
 			responseStatus: http.StatusConflict,
 			expectedError:  ErrInvalidAccountVersion,
 		}, {
 			name:           "server error",
-			accountID:      newUUID(),
+			accountID:      uuid.New(),
 			responseStatus: http.StatusInternalServerError,
 			responseBody:   "{\"error_message\": \"backend error\"}",
 			expectedError:  ErrServerError,
@@ -257,13 +259,13 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsHttpClientError() {
 		Return(nil, expectedError).
 		Once()
 
-	actualError := s.accountClient.DeleteVersion(newUUID(), 0)
+	actualError := s.accountClient.DeleteVersion(uuid.New(), 0)
 
 	s.ErrorIs(expectedError, actualError)
 }
 
 func (s *accountTestSuite) TestDeleteVersionedAccount() {
-	accountID := newUUID()
+	accountID := uuid.New()
 	s.mockHttpClient.
 		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, 0))).
 		Return(&http.Response{StatusCode: http.StatusNoContent, Body: toResponseBody("")}, nil).
@@ -273,7 +275,7 @@ func (s *accountTestSuite) TestDeleteVersionedAccount() {
 }
 
 func (s *accountTestSuite) TestDeleteLatestAccountVersion() {
-	accountID := newUUID()
+	accountID := uuid.New()
 	version := int64(42)
 	expectedAccount := AccountData{
 		ID:      accountID.String(),
@@ -302,10 +304,6 @@ func deleteRequestMatcher(expectedAccountID uuid.UUID, expectedVersion uint) fun
 		return input.Method == http.MethodDelete &&
 			input.URL.String() == expectedUrl
 	}
-}
-
-func newUUID() uuid.UUID {
-	return uuid.Must(uuid.NewUUID())
 }
 
 func toStringPtr(b []byte) *string {

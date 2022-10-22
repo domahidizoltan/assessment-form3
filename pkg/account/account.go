@@ -24,12 +24,14 @@ const (
 )
 
 var (
-	ErrNilUuid                  = errors.New("accountID can't be nil UUID")
-	ErrAccountNotFound          = errors.New("account not found")
-	ErrInvalidAccountVersion    = errors.New("invalid account version")
-	ErrServerError              = errors.New("server error")
-	ErrUnexpectedServerResponse = errors.New("unexpected server response")
-	ErrInvalidRequest           = errors.New("invalid request")
+	ErrBaseUrlNotConfigured        = errors.New("baseUrl not configured")
+	ErrOrganisationIDNotConfigured = errors.New("organisationID not configured")
+	ErrNilUuid                     = errors.New("accountID can't be nil UUID")
+	ErrAccountNotFound             = errors.New("account not found")
+	ErrInvalidAccountVersion       = errors.New("invalid account version")
+	ErrServerError                 = errors.New("server error")
+	ErrUnexpectedServerResponse    = errors.New("unexpected server response")
+	ErrInvalidRequest              = errors.New("invalid request")
 
 	generateUUID func() (uuid.UUID, error) = uuid.NewUUID
 )
@@ -46,13 +48,21 @@ type (
 	}
 )
 
-func NewClient(options ...config.Option) (accountClient, error) {
+func NewClient(options ...config.Option) (*accountClient, error) {
 	cfg := conf.NewConfig()
 	for _, opt := range options {
 		opt(&cfg)
 	}
 
-	return accountClient{
+	if cfg.BaseUrl == nil {
+		return nil, ErrBaseUrlNotConfigured
+	}
+
+	if cfg.OrganisationID == nil {
+		return nil, ErrOrganisationIDNotConfigured
+	}
+
+	return &accountClient{
 		client: &http.Client{
 			Timeout:   *cfg.Timeout,
 			Transport: createTransport(cfg),
@@ -196,7 +206,7 @@ func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 }
 
 func (a accountClient) get(url string) (*http.Response, error) {
-	return a.client.Get(a.config.BaseUrl + url)
+	return a.client.Get(*a.config.BaseUrl + url)
 }
 
 func (a accountClient) post(account AccountData) (*http.Response, error) {
@@ -205,11 +215,11 @@ func (a accountClient) post(account AccountData) (*http.Response, error) {
 	if err := json.NewEncoder(buf).Encode(container); err != nil {
 		return &http.Response{Body: toResponseBody("")}, err
 	}
-	return a.client.Post(a.config.BaseUrl+accountsUrl, jsonContentType, buf)
+	return a.client.Post(*a.config.BaseUrl+accountsUrl, jsonContentType, buf)
 }
 
 func (a accountClient) delete(url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodDelete, a.config.BaseUrl+url, nil)
+	req, err := http.NewRequest(http.MethodDelete, *a.config.BaseUrl+url, nil)
 	if err != nil {
 		return &http.Response{Body: toResponseBody("")}, err
 	}

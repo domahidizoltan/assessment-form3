@@ -9,8 +9,8 @@ import (
 )
 
 type ClientConfig struct {
-	OrganisationID  uuid.UUID      `env:"ORGANISATION_ID"`
-	BaseUrl         string         `env:"BASE_URL"`
+	OrganisationID  *uuid.UUID     `env:"ORGANISATION_ID"`
+	BaseUrl         *string        `env:"BASE_URL"`
 	Timeout         *time.Duration `env:"TIMEOUT" envDefault:"5s"`
 	MaxConns        int            `env:"MAX_CONNS" envDefault:"100"`
 	IdleConnTimeout *time.Duration `env:"IDLE_CONN_TIMEOUT" envDefault:"90s"`
