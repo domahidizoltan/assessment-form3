@@ -30,6 +30,7 @@ var (
 	ErrAccountNotFound             = errors.New("account not found")
 	ErrInvalidAccountVersion       = errors.New("invalid account version")
 	ErrServerError                 = errors.New("server error")
+	ErrServerUnavailable           = errors.New("server unavailable")
 	ErrUnexpectedServerResponse    = errors.New("unexpected server response")
 	ErrInvalidRequest              = errors.New("invalid request")
 
@@ -107,13 +108,15 @@ func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error
 		}
 		log.Error().Msgf("%s: %s", ErrInvalidRequest, msg)
 		return nil, ErrInvalidRequest
-	case http.StatusInternalServerError:
+	case http.StatusInternalServerError, http.StatusGatewayTimeout, http.StatusBadGateway:
 		msg, err := getErrorResponse(resp.Body)
 		if err != nil {
 			return nil, err
 		}
-		log.Error().Msgf("%s: %s", ErrServerError, msg)
+		log.Error().Msgf("%s: [%d] %s", ErrServerError, resp.StatusCode, msg)
 		return nil, ErrServerError
+	case http.StatusServiceUnavailable:
+		return nil, ErrServerUnavailable
 	case http.StatusCreated:
 		log.Debug().Msgf("account %s created", acc.ID)
 		return bodyToAccountData(resp.Body)
@@ -141,13 +144,15 @@ func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		return nil, ErrAccountNotFound
-	case http.StatusInternalServerError:
+	case http.StatusInternalServerError, http.StatusGatewayTimeout, http.StatusBadGateway:
 		msg, err := getErrorResponse(resp.Body)
 		if err != nil {
 			return nil, err
 		}
-		log.Error().Msgf("%s: %s", ErrServerError, msg)
+		log.Error().Msgf("%s: [%d] %s", ErrServerError, resp.StatusCode, msg)
 		return nil, ErrServerError
+	case http.StatusServiceUnavailable:
+		return nil, ErrServerUnavailable
 	case http.StatusOK:
 		return bodyToAccountData(resp.Body)
 	}
@@ -190,13 +195,15 @@ func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 		return ErrAccountNotFound
 	case http.StatusConflict:
 		return ErrInvalidAccountVersion
-	case http.StatusInternalServerError:
+	case http.StatusInternalServerError, http.StatusGatewayTimeout, http.StatusBadGateway:
 		msg, err := getErrorResponse(resp.Body)
 		if err != nil {
 			return err
 		}
-		log.Error().Msgf("%s: %s", ErrServerError, msg)
+		log.Error().Msgf("%s: [%d] %s", ErrServerError, resp.StatusCode, msg)
 		return ErrServerError
+	case http.StatusServiceUnavailable:
+		return ErrServerUnavailable
 	case http.StatusNoContent:
 		log.Debug().Msgf("account %s deleted", accountID)
 		return nil
@@ -229,6 +236,9 @@ func (a accountClient) delete(url string) (*http.Response, error) {
 func getErrorResponse(body io.ReadCloser) (string, error) {
 	var se serverError
 	if err := json.NewDecoder(body).Decode(&se); err != nil {
+		if errors.Is(err, io.EOF) {
+			return "", nil
+		}
 		return "", err
 	}
 	return se.ErrorMessage, nil

@@ -67,16 +67,32 @@ func (s *accountTestSuite) TestCreateReturnsError() {
 			expectedError:  ErrServerError,
 		},
 		{
+			name:           "server bad gateway",
+			responseStatus: http.StatusBadGateway,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server gateway timeout",
+			responseStatus: http.StatusGatewayTimeout,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server unavailable",
+			responseStatus: http.StatusServiceUnavailable,
+			expectedError:  ErrServerUnavailable,
+		},
+		{
 			name:           "unexpected server response",
 			responseStatus: http.StatusTeapot,
 			responseBody:   "oops",
 			expectedError:  ErrUnexpectedServerResponse,
 		},
 	} {
+		length := int64(len(test.responseBody))
 		s.Run(test.name, func() {
 			s.mockHttpClient.
 				On(Post, testAccountsUrl, jsonContentType, mock.Anything).
-				Return(&http.Response{Body: toResponseBody(test.responseBody), StatusCode: test.responseStatus}, nil).
+				Return(&http.Response{Body: toResponseBody(test.responseBody), StatusCode: test.responseStatus, ContentLength: length}, nil).
 				Once()
 
 			_, actualErr := s.accountClient.Create(AccountAttributes{})
@@ -150,6 +166,24 @@ func (s *accountTestSuite) TestFetchReturnsError() {
 			responseStatus: http.StatusInternalServerError,
 			responseBody:   "{\"error_message\": \"backend error\"}",
 			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server bad gateway",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusBadGateway,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server gateway timeout",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusGatewayTimeout,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server unavailable",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusServiceUnavailable,
+			expectedError:  ErrServerUnavailable,
 		},
 		{
 			name:           "unexpected server response",
@@ -237,6 +271,24 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError() {
 			responseStatus: http.StatusInternalServerError,
 			responseBody:   "{\"error_message\": \"backend error\"}",
 			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server bad gateway",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusBadGateway,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server gateway timeout",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusGatewayTimeout,
+			expectedError:  ErrServerError,
+		},
+		{
+			name:           "server unavailable",
+			accountID:      uuid.New(),
+			responseStatus: http.StatusServiceUnavailable,
+			expectedError:  ErrServerUnavailable,
 		},
 	} {
 		s.Run(test.name, func() {
