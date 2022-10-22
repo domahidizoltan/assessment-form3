@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"form3interview/pkg/config"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/google/uuid"
+	conf "form3interview/internal/config"
+	"form3interview/pkg/config"
 )
 
 const (
@@ -20,6 +21,7 @@ var (
 	ErrNilUuid               = errors.New("accountID can't be nil UUID")
 	ErrAccountNotFound       = errors.New("account not found")
 	ErrInvalidAccountVersion = errors.New("invalid account version")
+	ErrServerError           = errors.New("server error")
 )
 
 type (
@@ -29,12 +31,12 @@ type (
 	}
 	accountClient struct {
 		client httpClient
-		config config.ClientConfig
+		config conf.ClientConfig
 	}
 )
 
 func NewClient(options ...config.Option) (accountClient, error) {
-	cfg := config.InitConfig()
+	cfg := conf.NewConfig()
 	for _, opt := range options {
 		opt(&cfg)
 	}
@@ -48,7 +50,7 @@ func NewClient(options ...config.Option) (accountClient, error) {
 	}, nil
 }
 
-func createTransport(cfg config.ClientConfig) *http.Transport {
+func createTransport(cfg conf.ClientConfig) *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxConnsPerHost = cfg.MaxConns
 	transport.MaxIdleConnsPerHost = cfg.MaxConns
@@ -72,7 +74,13 @@ func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 
 }
 
-func (a accountClient) Delete(accountID uuid.UUID, version uint) error {
+func (a accountClient) Delete(accountID uuid.UUID) error {
+	//fetch
+	//delete
+	return nil
+}
+
+func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 	if accountID == uuid.Nil {
 		return ErrNilUuid
 	}
@@ -82,14 +90,22 @@ func (a accountClient) Delete(accountID uuid.UUID, version uint) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		return ErrAccountNotFound
 	case http.StatusConflict:
 		return ErrInvalidAccountVersion
+	case http.StatusInternalServerError:
+		var se serverError
+		if err := json.NewDecoder(resp.Body).Decode(&se); err != nil {
+			return err
+		}
+		log.Error().Msgf("%s: %s", ErrServerError, se.ErrorMessage)
+		return ErrServerError
 	case http.StatusNoContent:
-		log.Info().Msgf("account %s deleted", accountID)
+		log.Debug().Msgf("account %s deleted", accountID)
 		return nil
 	default:
 		return err

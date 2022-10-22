@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"form3interview/internal/mocks"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,59 +36,74 @@ func (s *accountTestSuite) SetupTest() {
 	}
 }
 
-func (s *accountTestSuite) TestDeleteAccountReturnsError_WhenNilUuidGiven() {
-	actualError := s.accountClient.Delete(uuid.Nil, 0)
+func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError_WhenNilUuidGiven() {
+	actualError := s.accountClient.DeleteVersion(uuid.Nil, 0)
 
 	s.ErrorIs(ErrNilUuid, actualError)
 	s.mockHttpClient.AssertNotCalled(s.T(), Do)
 }
 
-func (s *accountTestSuite) TestDeleteAccountReturnsError() {
-	missingAccountID := uuid.Must(uuid.NewUUID())
-	invalidVersion := uint(999)
+func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError() {
 	for _, test := range []struct {
-		name          string
-		accountID     uuid.UUID
-		version       uint
-		returnStatus  int
-		expectedError error
+		name           string
+		accountID      uuid.UUID
+		version        uint
+		responseStatus int
+		responseBody   string
+		expectedError  error
 	}{
-		{name: "account not found", accountID: missingAccountID, version: 0, returnStatus: http.StatusNotFound, expectedError: ErrAccountNotFound},
-		{name: "invalid account version", accountID: uuid.Must(uuid.NewUUID()), version: invalidVersion, returnStatus: http.StatusConflict, expectedError: ErrInvalidAccountVersion},
+		{
+			name:           "account not found",
+			accountID:      newUuid(),
+			responseStatus: http.StatusNotFound,
+			expectedError:  ErrAccountNotFound,
+		}, {
+			name:           "invalid account version",
+			accountID:      newUuid(),
+			version:        uint(999),
+			responseStatus: http.StatusConflict,
+			expectedError:  ErrInvalidAccountVersion,
+		}, {
+			name:           "server error",
+			accountID:      newUuid(),
+			responseStatus: http.StatusInternalServerError,
+			responseBody:   "{\"error_message\": \"backend error\"}",
+			expectedError:  ErrServerError,
+		},
 	} {
 		s.Run(test.name, func() {
 			s.mockHttpClient.
 				On(Do, mock.MatchedBy(deleteRequestMatcher(test.accountID, test.version))).
-				Return(&http.Response{StatusCode: test.returnStatus}, nil).
+				Return(&http.Response{StatusCode: test.responseStatus, Body: toResponseBody(test.responseBody)}, nil).
 				Once()
 
-			actualError := s.accountClient.Delete(test.accountID, test.version)
+			actualError := s.accountClient.DeleteVersion(test.accountID, test.version)
 
 			s.ErrorIs(test.expectedError, actualError)
 		})
 	}
 }
 
-func (s *accountTestSuite) TestDeleteAccountReturnsHttpError() {
+func (s *accountTestSuite) TestDeleteVersionedAccountReturnsHttpError() {
 	expectedError := errors.New("http error")
 	s.mockHttpClient.
 		On(Do, mock.Anything, mock.Anything).
 		Return(nil, expectedError).
 		Once()
 
-	actualError := s.accountClient.Delete(uuid.Must(uuid.NewUUID()), 0)
+	actualError := s.accountClient.DeleteVersion(uuid.Must(uuid.NewUUID()), 0)
 
 	s.ErrorIs(expectedError, actualError)
 }
 
-func (s *accountTestSuite) TestDeleteAccount() {
+func (s *accountTestSuite) TestDeleteVersionedAccount() {
 	accountID := uuid.Must(uuid.NewUUID())
 	s.mockHttpClient.
 		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, 0))).
-		Return(&http.Response{StatusCode: http.StatusNoContent}, nil).
+		Return(&http.Response{StatusCode: http.StatusNoContent, Body: toResponseBody("")}, nil).
 		Once()
 
-	s.NoError(s.accountClient.Delete(accountID, 0))
+	s.NoError(s.accountClient.DeleteVersion(accountID, 0))
 }
 
 func deleteRequestMatcher(expectedAccountID uuid.UUID, expectedVersion uint) func(input *http.Request) bool {
@@ -94,4 +112,12 @@ func deleteRequestMatcher(expectedAccountID uuid.UUID, expectedVersion uint) fun
 		return input.Method == http.MethodDelete &&
 			input.URL.String() == expectedUrl
 	}
+}
+
+func newUuid() uuid.UUID {
+	return uuid.Must(uuid.NewUUID())
+}
+
+func toResponseBody(body string) io.ReadCloser {
+	return ioutil.NopCloser(strings.NewReader(body))
 }
