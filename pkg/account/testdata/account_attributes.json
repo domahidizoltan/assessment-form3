@@ -1,0 +1,21 @@
+{
+    "country": "FR",
+    "base_currency": "EUR",
+    "bank_id": "20041",
+    "bank_id_code": "FR",
+    "account_number": "0500013M026",
+    "iban": "FR1420041010050500013M02606",
+    "bic": "NWBKFR42",
+    "account_classification": "Personal",
+    "joint_account": true,
+    "account_matching_opt_out": true,
+    "switched": true,
+    "status": "confirmed",
+    "secondary_identification": "secID",
+    "name": [
+        "testName"
+    ],
+    "alternative_names": [
+        "testAltName"
+    ]
+}
