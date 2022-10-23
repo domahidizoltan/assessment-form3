@@ -1,15 +1,16 @@
-//go:build integration
-// +build integration
-
 package account
 
 import (
 	"encoding/json"
 	"form3interview/pkg/config"
+	"form3interview/pkg/requestenricher"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -83,6 +84,28 @@ func (s accountApiTestSuite) Test3_DeleteAccount() {
 	s.NoError(s.accountClient.Delete(intTestAccountID))
 	_, err = s.accountClient.Fetch(intTestAccountID)
 	s.ErrorIs(err, ErrAccountNotFound)
+}
+
+func (s accountApiTestSuite) Test4_EnrichedRequest() {
+	var start time.Time
+	beforeHookCalled := false
+	afterHookCalled := false
+	en := requestenricher.RequestEnricher{
+		BeforeHook: func() {
+			beforeHookCalled = true
+			start = time.Now()
+		},
+		AfterHook: func(r *http.Response) {
+			afterHookCalled = true
+			log.Info().Msgf("Request took %s and returned with status %d", time.Since(start), r.StatusCode)
+		},
+	}
+
+	actualData, err := s.accountClient.Create(*intTestAttributes, en)
+	s.NoError(err)
+	s.True(beforeHookCalled)
+	s.True(afterHookCalled)
+	s.assertAccountData(actualData)
 }
 
 func (s accountApiTestSuite) assertAccountData(data *AccountData) {

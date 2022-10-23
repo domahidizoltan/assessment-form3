@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"form3interview/internal/config"
 	"form3interview/internal/mocks"
-	"io"
 	"net/http"
 	"testing"
 
@@ -17,8 +16,6 @@ import (
 
 const (
 	Do                 = "Do"
-	Get                = "Get"
-	Post               = "Post"
 	testBaseUrl        = "testhost"
 	testAccountsUrl    = testBaseUrl + accountsUrl
 	testOrganisationID = "ad27e265-9605-4b4b-a0e5-3003ea9cc4dc"
@@ -91,7 +88,7 @@ func (s *accountTestSuite) TestCreateReturnsError() {
 		length := int64(len(test.responseBody))
 		s.Run(test.name, func() {
 			s.mockHttpClient.
-				On(Post, testAccountsUrl, jsonContentType, mock.Anything).
+				On(Do, mock.MatchedBy(postRequestMatcher(AccountData{})), mock.Anything).
 				Return(&http.Response{Body: toResponseBody(test.responseBody), StatusCode: test.responseStatus, ContentLength: length}, nil).
 				Once()
 
@@ -104,7 +101,7 @@ func (s *accountTestSuite) TestCreateReturnsError() {
 func (s *accountTestSuite) TestCreateReturnsHttpClientError() {
 	expectedError := errors.New("http client error")
 	s.mockHttpClient.
-		On(Post, testAccountsUrl, jsonContentType, mock.Anything).
+		On(Do, mock.MatchedBy(postRequestMatcher(AccountData{})), mock.Anything).
 		Return(nil, expectedError).
 		Once()
 
@@ -125,14 +122,14 @@ func (s *accountTestSuite) TestCreateAccount() {
 
 	fakeResponse := "{\"data\":{}}"
 	s.mockHttpClient.
-		On(Post, testAccountsUrl, jsonContentType, mock.Anything).
+		On(Do, mock.MatchedBy(postRequestMatcher(AccountData{})), mock.Anything).
 		Return(&http.Response{Body: toResponseBody(fakeResponse), StatusCode: http.StatusCreated}, nil).
 		Once()
 
 	_, err := s.accountClient.Create(atr)
 	s.NoError(err)
-	requestBody := s.mockHttpClient.Calls[0].Arguments[2].(io.Reader)
-	requestedAccount, err := bodyToAccountData(requestBody)
+	request := s.mockHttpClient.Calls[0].Arguments[0].(*http.Request)
+	requestedAccount, err := bodyToAccountData(request.Body)
 	s.Require().NoError(err)
 	s.Equal(accountID.String(), requestedAccount.ID)
 	s.Equal(testOrganisationID, requestedAccount.OrganisationID)
@@ -144,7 +141,7 @@ func (s *accountTestSuite) TestFetchReturnsError_WhenNilUuidGiven() {
 	_, actualError := s.accountClient.Fetch(uuid.Nil)
 
 	s.ErrorIs(ErrNilUuid, actualError)
-	s.mockHttpClient.AssertNotCalled(s.T(), Get)
+	s.mockHttpClient.AssertNotCalled(s.T(), Do)
 }
 
 func (s *accountTestSuite) TestFetchReturnsError() {
@@ -197,7 +194,7 @@ func (s *accountTestSuite) TestFetchReturnsError() {
 			body := toResponseBody(test.responseBody)
 			length := int64(len(test.responseBody))
 			s.mockHttpClient.
-				On(Get, fmt.Sprintf("%s/%s", testAccountsUrl, test.accountID)).
+				On(Do, mock.MatchedBy(getRequestMatcher(test.accountID)), mock.Anything).
 				Return(&http.Response{StatusCode: test.responseStatus, Body: body, ContentLength: length}, nil).
 				Once()
 
@@ -209,13 +206,14 @@ func (s *accountTestSuite) TestFetchReturnsError() {
 }
 
 func (s *accountTestSuite) TestFetchReturnsHttpClientError() {
+	accountID := uuid.New()
 	expectedError := errors.New("http client error")
 	s.mockHttpClient.
-		On(Get, mock.Anything).
+		On(Do, mock.MatchedBy(getRequestMatcher(accountID)), mock.Anything).
 		Return(nil, expectedError).
 		Once()
 
-	_, actualError := s.accountClient.Fetch(uuid.New())
+	_, actualError := s.accountClient.Fetch(accountID)
 
 	s.ErrorIs(expectedError, actualError)
 }
@@ -229,7 +227,7 @@ func (s *accountTestSuite) TestFetchAccount() {
 	s.Require().NoError(err)
 
 	s.mockHttpClient.
-		On(Get, fmt.Sprintf("%s/%s", testAccountsUrl, accountID)).
+		On(Do, mock.MatchedBy(getRequestMatcher(accountID)), mock.Anything).
 		Return(&http.Response{StatusCode: http.StatusOK, Body: toResponseBody(string(body))}, nil).
 		Once()
 
@@ -293,7 +291,7 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError() {
 	} {
 		s.Run(test.name, func() {
 			s.mockHttpClient.
-				On(Do, mock.MatchedBy(deleteRequestMatcher(test.accountID, test.version))).
+				On(Do, mock.MatchedBy(deleteRequestMatcher(test.accountID, test.version)), mock.Anything).
 				Return(&http.Response{StatusCode: test.responseStatus, Body: toResponseBody(test.responseBody)}, nil).
 				Once()
 
@@ -305,13 +303,14 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError() {
 }
 
 func (s *accountTestSuite) TestDeleteVersionedAccountReturnsHttpClientError() {
+	accountID := uuid.New()
 	expectedError := errors.New("http client error")
 	s.mockHttpClient.
-		On(Do, mock.Anything, mock.Anything).
+		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, 0)), mock.Anything).
 		Return(nil, expectedError).
 		Once()
 
-	actualError := s.accountClient.DeleteVersion(uuid.New(), 0)
+	actualError := s.accountClient.DeleteVersion(accountID, 0)
 
 	s.ErrorIs(expectedError, actualError)
 }
@@ -319,7 +318,7 @@ func (s *accountTestSuite) TestDeleteVersionedAccountReturnsHttpClientError() {
 func (s *accountTestSuite) TestDeleteVersionedAccount() {
 	accountID := uuid.New()
 	s.mockHttpClient.
-		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, 0))).
+		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, 0)), mock.Anything).
 		Return(&http.Response{StatusCode: http.StatusNoContent, Body: toResponseBody("")}, nil).
 		Once()
 
@@ -337,17 +336,32 @@ func (s *accountTestSuite) TestDeleteLatestAccountVersion() {
 	s.Require().NoError(err)
 
 	s.mockHttpClient.
-		On(Get, fmt.Sprintf("%s/%s", testAccountsUrl, accountID)).
+		On(Do, mock.MatchedBy(getRequestMatcher(accountID)), mock.Anything).
 		Return(&http.Response{StatusCode: http.StatusOK, Body: toResponseBody(string(body))}, nil).
 		Once()
 
 	s.mockHttpClient.
-		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, uint(version)))).
+		On(Do, mock.MatchedBy(deleteRequestMatcher(accountID, uint(version))), mock.Anything).
 		Return(&http.Response{StatusCode: http.StatusNoContent, Body: toResponseBody("")}, nil).
 		Once()
 
 	s.NoError(s.accountClient.Delete(accountID))
 	s.mockHttpClient.AssertExpectations(s.T())
+}
+
+func postRequestMatcher(data AccountData) func(input *http.Request) bool {
+	return func(input *http.Request) bool {
+		return input.Method == http.MethodPost &&
+			input.URL.String() == testAccountsUrl
+	}
+}
+
+func getRequestMatcher(expectedAccountID uuid.UUID) func(input *http.Request) bool {
+	expectedUrl := fmt.Sprintf("%s/%s", testAccountsUrl, expectedAccountID)
+	return func(input *http.Request) bool {
+		return input.Method == http.MethodGet &&
+			input.URL.String() == expectedUrl
+	}
 }
 
 func deleteRequestMatcher(expectedAccountID uuid.UUID, expectedVersion uint) func(input *http.Request) bool {

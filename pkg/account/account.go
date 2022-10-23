@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -14,7 +13,9 @@ import (
 	"github.com/rs/zerolog/log"
 
 	conf "form3interview/internal/config"
+	ire "form3interview/internal/requestenricher"
 	"form3interview/pkg/config"
+	re "form3interview/pkg/requestenricher"
 )
 
 const (
@@ -39,9 +40,7 @@ var (
 
 type (
 	httpClient interface {
-		Get(url string) (*http.Response, error)
-		Post(url, contentType string, body io.Reader) (*http.Response, error)
-		Do(req *http.Request) (*http.Response, error)
+		Do(*http.Request, ...re.RequestEnricher) (*http.Response, error)
 	}
 	accountClient struct {
 		client httpClient
@@ -62,15 +61,15 @@ func NewClient(options ...config.Option) (*accountClient, error) {
 	}
 
 	return &accountClient{
-		client: &http.Client{
+		client: ire.EnrichClient(http.Client{
 			Timeout:   *cfg.Timeout,
 			Transport: createTransport(cfg),
-		},
+		}),
 		config: cfg,
 	}, nil
 }
 
-func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error) {
+func (a accountClient) Create(attributes AccountAttributes, en ...re.RequestEnricher) (*AccountData, error) {
 	newID, err := generateUUID()
 	if err != nil {
 		return nil, err
@@ -83,7 +82,7 @@ func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error
 		Attributes:     &attributes,
 	}
 
-	resp, err := a.post(acc)
+	resp, err := a.post(acc, en...)
 	if err != nil {
 		return nil, err
 	}
@@ -119,12 +118,12 @@ func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error
 	return nil, ErrUnexpectedServerResponse
 }
 
-func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
+func (a accountClient) Fetch(accountID uuid.UUID, en ...re.RequestEnricher) (*AccountData, error) {
 	if accountID == uuid.Nil {
 		return nil, ErrNilUuid
 	}
 
-	resp, err := a.get(fmt.Sprintf("%s/%s", accountsUrl, accountID))
+	resp, err := a.get(fmt.Sprintf("%s/%s", accountsUrl, accountID), en...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +153,8 @@ func (a accountClient) Fetch(accountID uuid.UUID) (*AccountData, error) {
 	return nil, ErrUnexpectedServerResponse
 }
 
-func (a accountClient) Delete(accountID uuid.UUID) error {
-	acc, err := a.Fetch(accountID)
+func (a accountClient) Delete(accountID uuid.UUID, en ...re.RequestEnricher) error {
+	acc, err := a.Fetch(accountID, en...)
 	if err != nil {
 		return err
 	}
@@ -164,16 +163,16 @@ func (a accountClient) Delete(accountID uuid.UUID) error {
 	if acc.Version != nil {
 		version = uint(*acc.Version)
 	}
-	return a.DeleteVersion(accountID, version)
+	return a.DeleteVersion(accountID, version, en...)
 }
 
-func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
+func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint, en ...re.RequestEnricher) error {
 	if accountID == uuid.Nil {
 		return ErrNilUuid
 	}
 
 	url := fmt.Sprintf("%s/%s?version=%d", accountsUrl, accountID, version)
-	resp, err := a.delete(url)
+	resp, err := a.delete(url, en...)
 	if err != nil {
 		return err
 	}
@@ -206,25 +205,34 @@ func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 	}
 }
 
-func (a accountClient) get(url string) (*http.Response, error) {
-	return a.client.Get(*a.config.BaseUrl + url)
+func (a accountClient) get(url string, en ...re.RequestEnricher) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, *a.config.BaseUrl+url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return a.client.Do(req, en...)
 }
 
-func (a accountClient) post(account AccountData) (*http.Response, error) {
+func (a accountClient) post(account AccountData, en ...re.RequestEnricher) (*http.Response, error) {
 	container := dataContainer{Data: account}
 	buf := new(bytes.Buffer)
 	if err := json.NewEncoder(buf).Encode(container); err != nil {
-		return &http.Response{Body: toResponseBody("")}, err
+		return nil, err
 	}
-	return a.client.Post(*a.config.BaseUrl+accountsUrl, jsonContentType, buf)
+
+	req, err := http.NewRequest(http.MethodPost, *a.config.BaseUrl+accountsUrl, buf)
+	if err != nil {
+		return nil, err
+	}
+	return a.client.Do(req, en...)
 }
 
-func (a accountClient) delete(url string) (*http.Response, error) {
+func (a accountClient) delete(url string, en ...re.RequestEnricher) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodDelete, *a.config.BaseUrl+url, nil)
 	if err != nil {
-		return &http.Response{Body: toResponseBody("")}, err
+		return nil, err
 	}
-	return a.client.Do(req)
+	return a.client.Do(req, en...)
 }
 
 func getErrorResponse(body io.ReadCloser) (string, error) {
@@ -239,7 +247,7 @@ func getErrorResponse(body io.ReadCloser) (string, error) {
 }
 
 func toResponseBody(body string) io.ReadCloser {
-	return ioutil.NopCloser(strings.NewReader(body))
+	return io.NopCloser(strings.NewReader(body))
 }
 
 func bodyToAccountData(body io.Reader) (*AccountData, error) {
