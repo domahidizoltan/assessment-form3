@@ -39,3 +39,9 @@ func WithOrganisationID(id uuid.UUID) Option {
 		c.OrganisationID = &id
 	}
 }
+
+func ApplyOptions(cfg *conf.ClientConfig, options []Option) {
+	for _, opt := range options {
+		opt(cfg)
+	}
+}

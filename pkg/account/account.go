@@ -51,15 +51,13 @@ type (
 
 func NewClient(options ...config.Option) (*accountClient, error) {
 	cfg := conf.NewConfig()
-	for _, opt := range options {
-		opt(&cfg)
-	}
+	config.ApplyOptions(&cfg, options)
 
-	if cfg.BaseUrl == nil {
+	if cfg.BaseUrl == nil || *cfg.BaseUrl == "" {
 		return nil, ErrBaseUrlNotConfigured
 	}
 
-	if cfg.OrganisationID == nil {
+	if cfg.OrganisationID == nil || *cfg.OrganisationID == uuid.Nil {
 		return nil, ErrOrganisationIDNotConfigured
 	}
 
@@ -70,15 +68,6 @@ func NewClient(options ...config.Option) (*accountClient, error) {
 		},
 		config: cfg,
 	}, nil
-}
-
-func createTransport(cfg conf.ClientConfig) *http.Transport {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxConnsPerHost = cfg.MaxConns
-	transport.MaxIdleConnsPerHost = cfg.MaxConns
-	transport.MaxIdleConns = cfg.MaxConns
-	transport.IdleConnTimeout = *cfg.IdleConnTimeout
-	return transport
 }
 
 func (a accountClient) Create(attributes AccountAttributes) (*AccountData, error) {
@@ -194,6 +183,11 @@ func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint) error {
 	case http.StatusNotFound:
 		return ErrAccountNotFound
 	case http.StatusConflict:
+		msg, err := getErrorResponse(resp.Body)
+		if err != nil {
+			return err
+		}
+		log.Error().Msgf("%s: %s", ErrInvalidAccountVersion, msg)
 		return ErrInvalidAccountVersion
 	case http.StatusInternalServerError, http.StatusGatewayTimeout, http.StatusBadGateway:
 		msg, err := getErrorResponse(resp.Body)
@@ -254,4 +248,13 @@ func bodyToAccountData(body io.Reader) (*AccountData, error) {
 		return nil, err
 	}
 	return &container.Data, nil
+}
+
+func createTransport(cfg conf.ClientConfig) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxConnsPerHost = cfg.MaxConns
+	transport.MaxIdleConnsPerHost = cfg.MaxConns
+	transport.MaxIdleConns = cfg.MaxConns
+	transport.IdleConnTimeout = *cfg.IdleConnTimeout
+	return transport
 }

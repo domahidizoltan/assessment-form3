@@ -70,9 +70,7 @@ func (s *configTestSuite) TestCreateWithOptions() {
 	}
 
 	cfg := config.NewConfig()
-	for _, opt := range options {
-		opt(&cfg)
-	}
+	ApplyOptions(&cfg, options)
 
 	s.Equal(newOrgID, *cfg.OrganisationID)
 	s.Equal("tst", *cfg.BaseUrl)
