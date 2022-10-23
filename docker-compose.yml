@@ -48,3 +48,13 @@ services:
     restart: always
     ports:
       - 9000:8080
+  
+  clienttest:
+    build: .
+    depends_on:
+      - postgresql
+      - accountapi
+    environment:
+      - PGHOST=postgresql
+      - PGPORT=5432
+      - API_BASE_URL=http://accountapi:8080/v1

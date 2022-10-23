@@ -1,7 +1,11 @@
+//go:build integration
+// +build integration
+
 package account
 
 import (
 	"encoding/json"
+	"fmt"
 	"form3interview/pkg/config"
 	"form3interview/pkg/requestenricher"
 	"net/http"
@@ -35,7 +39,16 @@ func TestAccountApiTestSuite(t *testing.T) {
 
 func (s *accountApiTestSuite) SetupSuite() {
 	var err error
-	s.db, err = gorm.Open(postgres.Open("host=localhost user=root password=password dbname=interview_accountapi"))
+	pghost := os.Getenv("PGHOST")
+	if pghost == "" {
+		pghost = "localhost"
+	}
+	pgport := os.Getenv("PGPORT")
+	if pgport == "" {
+		pgport = "5432"
+	}
+	dsn := fmt.Sprintf("host=%s port=%s user=root password=password dbname=interview_accountapi", pghost, pgport)
+	s.db, err = gorm.Open(postgres.Open(dsn))
 	s.Require().NoError(err)
 
 	fixture, err := os.ReadFile("testdata/account_attributes.json")
@@ -46,8 +59,12 @@ func (s *accountApiTestSuite) SetupSuite() {
 	s.originalGenerateFunc = generateUUID
 	generateUUID = func() (uuid.UUID, error) { return intTestAccountID, nil }
 
+	baseUrl := os.Getenv("API_BASE_URL")
+	if baseUrl == "" {
+		baseUrl = "http://localhost:8080/v1"
+	}
 	s.accountClient, err = NewClient(
-		config.WithBaseUrl("http://localhost:8080/v1"),
+		config.WithBaseUrl(baseUrl),
 		config.WithOrganisationID(intTestOrganisationID),
 	)
 	s.Require().NoError(err)
