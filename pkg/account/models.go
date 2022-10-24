@@ -1,9 +1,11 @@
 package account
 
+// dataContainer is a simple container for the "data" JSON field.
 type dataContainer struct {
 	Data AccountData `json:"data,omitempty"`
 }
 
+// serverError is a simple container for the "error_message" JSON response field.
 type serverError struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 }

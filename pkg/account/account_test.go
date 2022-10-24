@@ -140,7 +140,7 @@ func (s *accountTestSuite) TestCreateAccount() {
 func (s *accountTestSuite) TestFetchReturnsError_WhenNilUuidGiven() {
 	_, actualError := s.accountClient.Fetch(uuid.Nil)
 
-	s.ErrorIs(ErrNilUuid, actualError)
+	s.ErrorIs(ErrNilUUID, actualError)
 	s.mockHttpClient.AssertNotCalled(s.T(), Do)
 }
 
@@ -239,7 +239,7 @@ func (s *accountTestSuite) TestFetchAccount() {
 func (s *accountTestSuite) TestDeleteVersionedAccountReturnsError_WhenNilUuidGiven() {
 	actualError := s.accountClient.DeleteVersion(uuid.Nil, 0)
 
-	s.ErrorIs(ErrNilUuid, actualError)
+	s.ErrorIs(ErrNilUUID, actualError)
 	s.mockHttpClient.AssertNotCalled(s.T(), Do)
 }
 

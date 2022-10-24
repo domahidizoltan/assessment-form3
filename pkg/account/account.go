@@ -1,3 +1,5 @@
+// Package account provides Form3 client to manage accounts.
+// See https://www.api-docs.form3.tech/api/schemes/sepa-direct-debit/accounts/accounts
 package account
 
 import (
@@ -19,21 +21,33 @@ import (
 )
 
 const (
-	accountsUrl     = "/organisation/accounts"
-	jsonContentType = "application/json"
-	accountsType    = "accounts"
+	accountsUrl  = "/organisation/accounts"
+	accountsType = "accounts"
 )
 
 var (
-	ErrBaseUrlNotConfigured        = errors.New("baseUrl not configured")
+	// ErrBaseUrlNotConfigured base url is not configured
+	ErrBaseUrlNotConfigured = errors.New("baseUrl not configured")
+	// ErrOrganisationIDNotConfigured organisation ID is not configured
 	ErrOrganisationIDNotConfigured = errors.New("organisationID not configured")
-	ErrNilUuid                     = errors.New("accountID can't be nil UUID")
-	ErrAccountNotFound             = errors.New("account not found")
-	ErrInvalidAccountVersion       = errors.New("invalid account version")
-	ErrServerError                 = errors.New("server error")
-	ErrServerUnavailable           = errors.New("server unavailable")
-	ErrUnexpectedServerResponse    = errors.New("unexpected server response")
-	ErrInvalidRequest              = errors.New("invalid request")
+	// ErrNilUUID nil UUID is not allowed
+	ErrNilUUID = errors.New("nil UUID not allowed")
+	// ErrAccountNotFound account not found
+	ErrAccountNotFound = errors.New("account not found")
+	// ErrInvalidAccountVersion account version not found
+	ErrInvalidAccountVersion = errors.New("invalid account version")
+	// ErrServerError server side error occured.
+	// This includes these server errors:
+	// 		500 Internal Server Error
+	// 		502 Bad Gateway
+	// 		504 Gateway Timeout
+	ErrServerError = errors.New("server error")
+	// ErrServerUnavailable server is unavailable
+	ErrServerUnavailable = errors.New("server unavailable")
+	// ErrUnexpectedServerResponse server response not handled by the client
+	ErrUnexpectedServerResponse = errors.New("unexpected server response")
+	// ErrInvalidRequest server returned with 400 Bad Request
+	ErrInvalidRequest = errors.New("invalid request")
 
 	generateUUID func() (uuid.UUID, error) = uuid.NewUUID
 )
@@ -48,6 +62,8 @@ type (
 	}
 )
 
+// NewClient creates a client for managing Form3 accounts.
+// The client can be configured by passing config.Options with the helpers from the form3interview/pkg/config package.
 func NewClient(options ...config.Option) (*accountClient, error) {
 	cfg := conf.NewConfig()
 	config.ApplyOptions(&cfg, options)
@@ -69,6 +85,10 @@ func NewClient(options ...config.Option) (*accountClient, error) {
 	}, nil
 }
 
+// Create an account with attributes.
+// See https://www.api-docs.form3.tech/api/schemes/sepa-direct-debit/accounts/accounts/create-an-account
+//
+// The request can be enriched by RequestEnricher
 func (a accountClient) Create(attributes AccountAttributes, en ...re.RequestEnricher) (*AccountData, error) {
 	newID, err := generateUUID()
 	if err != nil {
@@ -118,9 +138,13 @@ func (a accountClient) Create(attributes AccountAttributes, en ...re.RequestEnri
 	return nil, ErrUnexpectedServerResponse
 }
 
+// Fetch an account by it's ID
+// See https://www.api-docs.form3.tech/api/schemes/sepa-direct-debit/accounts/accounts/fetch-an-account
+//
+// The request can be enriched by RequestEnricher
 func (a accountClient) Fetch(accountID uuid.UUID, en ...re.RequestEnricher) (*AccountData, error) {
 	if accountID == uuid.Nil {
-		return nil, ErrNilUuid
+		return nil, ErrNilUUID
 	}
 
 	resp, err := a.get(fmt.Sprintf("%s/%s", accountsUrl, accountID), en...)
@@ -153,6 +177,11 @@ func (a accountClient) Fetch(accountID uuid.UUID, en ...re.RequestEnricher) (*Ac
 	return nil, ErrUnexpectedServerResponse
 }
 
+// Delete is a convenience function to delete an account by it's ID having the latest version.
+// See https://www.api-docs.form3.tech/api/schemes/sepa-direct-debit/accounts/accounts/delete-an-account
+//
+// Under the hood it fetches the latest account and delete that with the specific version returned.
+// The request can be enriched by RequestEnricher
 func (a accountClient) Delete(accountID uuid.UUID, en ...re.RequestEnricher) error {
 	acc, err := a.Fetch(accountID, en...)
 	if err != nil {
@@ -166,9 +195,13 @@ func (a accountClient) Delete(accountID uuid.UUID, en ...re.RequestEnricher) err
 	return a.DeleteVersion(accountID, version, en...)
 }
 
+// DeleteVersion deletes an account by it's ID having a specific version. 
+// See https://www.api-docs.form3.tech/api/schemes/sepa-direct-debit/accounts/accounts/delete-an-account
+//
+// The request can be enriched by RequestEnricher
 func (a accountClient) DeleteVersion(accountID uuid.UUID, version uint, en ...re.RequestEnricher) error {
 	if accountID == uuid.Nil {
-		return ErrNilUuid
+		return ErrNilUUID
 	}
 
 	url := fmt.Sprintf("%s/%s?version=%d", accountsUrl, accountID, version)
