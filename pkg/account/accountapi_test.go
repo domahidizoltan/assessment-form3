@@ -47,7 +47,7 @@ func (s *accountApiTestSuite) SetupSuite() {
 	if pgport == "" {
 		pgport = "5432"
 	}
-	dsn := fmt.Sprintf("host=%s port=%s user=root password=password dbname=interview_accountapi", pghost, pgport)
+	dsn := fmt.Sprintf("host=%s port=%s user=interview_accountapi_user password=123 dbname=interview_accountapi", pghost, pgport)
 	s.db, err = gorm.Open(postgres.Open(dsn))
 	s.Require().NoError(err)
 
